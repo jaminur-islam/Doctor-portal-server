@@ -1,5 +1,6 @@
 var admin = require("firebase-admin");
 const express = require("express");
+const ObjectId = require('mongodb').ObjectId;
 const app = express();
 const cors = require("cors");
 const port = process.env.PORT || 5000;
@@ -9,6 +10,8 @@ require("dotenv").config();
 app.use(cors());
 app.use(express.json());
 
+// Stripe =========================================================
+const stripe = require("stripe")(process.env.STRIPE_ID)
 var serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
@@ -49,7 +52,7 @@ const run = async () => {
 
       if (requester) {
         const requesterUser = await usersCollection.findOne({
-          email: requester,
+          email: requester
         });
         if (requesterUser.role == "Admin") {
           const filter = { email: user.email };
@@ -75,9 +78,9 @@ const run = async () => {
         const filter = { email: email, date: date };
         const result = await appointmentCollection.find(filter).toArray();
         res.send(result);
-      } else {
+      } /* else {
         res.status(401).json({ message: "user not aphorize" });
-      }
+      } */
     });
 
     //POST api [appointment data post to server ]
@@ -86,6 +89,29 @@ const run = async () => {
       const result = await appointmentCollection.insertOne(appointment);
       res.send(result);
     });
+
+    // appointment collection single item
+    app.get('/appointment/:id' ,async (req , res)=>{
+      const id = req.params.id
+      const filter = {_id: ObjectId(id)};
+      const result = await appointmentCollection.findOne(filter)
+      
+      res.send(result)
+    })
+
+   // appointment 'PUT'  [payment method in]=================
+    app.put('/appointment/payment/:id' , async (req ,res)=>{
+      const id = req.params.id;
+      const payment = req.body;
+      const filter = {_id : ObjectId(id)};
+      const updateDoc = {
+        $set:{
+          payment : payment
+        }
+      }
+      const result  = await appointmentCollection.updateOne(filter, updateDoc)
+      res.send(result)
+    })
 
     // POST user api
     app.post("/users", async (req, res) => {
@@ -118,6 +144,27 @@ const run = async () => {
       }
       res.json({ admin: isadmin });
     });
+
+    // payment api=======================================
+    app.post('/create-payment-intent' , async(req ,res)=>{
+      const paymentInfo = req.body
+      const amount = paymentInfo.price * 100;
+      const paymentIndent = await stripe.paymentIntents.create({
+        currency : 'usd',
+        amount: amount,
+        payment_method_types: ['card']
+      });
+      res.json({clientSecret: paymentIndent.client_secret})
+    })
+
+
+
+
+
+
+
+
+
   } finally {
     // await client.close();
   }
